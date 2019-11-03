@@ -1,20 +1,29 @@
 package minesweeper
 
 import java.util.Random
+import java.util.Scanner
 
-enum class Cell(val symbol: Char) {
-    EMPTY('.'),
-    MINE('*'),
-    MARK('*'),
+enum class GameState { WIN, LOOSE, UNCLEAR }
+
+class Cell(var isMine: Boolean, var isMarked: Boolean = false, var isOpened: Boolean = false) {
+    override fun toString(): String = when {
+        isMarked -> "*"
+        isOpened -> "/"
+        else -> {
+            "("
+        }
+    }
 }
 
 class MineSweeper(var minesLeft: Int, val rows: Int = 9, val columns: Int = 9) {
     var field: Array<Array<Cell>>
-    var marked: Array<Array<Boolean>>
+    var fieldWasCreated = false
 
     init {
-        field = Array(rows) { Array(columns) { Cell.EMPTY } }
-        marked = Array(rows) { Array(columns) { false } }
+        field = Array(rows) { Array(columns) { Cell(false) } }
+    }
+
+    private fun createField(X: Int, Y: Int) {
         val rnd = Random()
 
         for (i in 0 until minesLeft) {
@@ -22,29 +31,45 @@ class MineSweeper(var minesLeft: Int, val rows: Int = 9, val columns: Int = 9) {
                 val x = rnd.nextInt(rows)
                 val y = rnd.nextInt(columns)
 
-                if (field[x][y] == Cell.EMPTY) {
-                    field[x][y] = Cell.MINE
+                if ((Pair(x, y) != Pair(X, Y)) && field[x][y].isMine.not()) {
+                    field[x][y].isMine = true
                     break
                 }
             }
         }
     }
 
-    private fun getNeighbourMinesCount(x: Int, y: Int): Int {
-        var result = 0
+    private fun inRange(x: Int, maxValue: Int) = (x >= 0) && (x < maxValue)
+
+    private fun getNeighborCells(x: Int, y: Int): MutableList<Pair<Int, Int>> {
+        val result = MutableList(0) { Pair(0, 0) }
 
         for (i in x - 1 until x + 2) {
             for (j in y - 1 until y + 2) {
-                if ((i >= 0) && (i < rows) && (j >= 0) && (j < columns) && (field[i][j] == Cell.MINE)) {
-                    ++result
+                if (inRange(i, rows) && inRange(j, columns)) {
+                    result.add(Pair(i, j))
                 }
             }
         }
 
-        return if (field[x][y] != Cell.MINE) result else result - 1
+        result.remove(Pair(x, y))
+
+        return result
     }
 
-    fun printField(showMines: Boolean = false) {
+    private fun getNeighborMinesCount(x: Int, y: Int): Int {
+        var result = 0
+
+        for (neighbor in getNeighborCells(x, y)) {
+            if (field[neighbor.first][neighbor.second].isMine) {
+                ++result
+            }
+        }
+
+        return result
+    }
+
+    fun printField(isLoose: Boolean) {
         println()
         println((1..columns).joinToString("", " |", "|"))
         println("-|" + "-".repeat(columns) + "|")
@@ -53,18 +78,22 @@ class MineSweeper(var minesLeft: Int, val rows: Int = 9, val columns: Int = 9) {
             print((row + 1).toString() + "|")
 
             for (column in 0 until columns) {
-                if (field[row][column] == Cell.EMPTY) {
-                    if (!showMines && marked[row][column]) {
-                        print(Cell.MARK.symbol)
-                    } else {
-                        val neighbours = getNeighbourMinesCount(row, column)
-                        print(if (neighbours > 0) neighbours.toString() else field[row][column].symbol)
-                    }
-                } else {
+                val cell = field[row][column]
+
+                if (cell.isMine) {
                     when {
-                        showMines -> print(field[row][column].symbol)
-                        marked[row][column] -> print(Cell.MARK.symbol)
-                        else -> print(Cell.EMPTY.symbol)
+                        isLoose -> print('X')
+                        cell.isMarked -> print('*')
+                        else -> print('.')
+                    }
+                } else if (cell.isMarked) {
+                    print('*')
+                } else {
+                    val neighbors = getNeighborMinesCount(row, column)
+
+                    when (neighbors) {
+                        0 -> print(if (cell.isOpened) '/' else '.')
+                        else -> print(neighbors)
                     }
                 }
             }
@@ -75,35 +104,65 @@ class MineSweeper(var minesLeft: Int, val rows: Int = 9, val columns: Int = 9) {
         println("-|" + "-".repeat(columns) + "|")
     }
 
-    /**
-     * Return true if user founded all mines, false otherwise
-     */
-    fun markCell(y: Int, x: Int): Boolean {
-        if (marked[x - 1][y - 1]) {
-            marked[x - 1][y - 1] = false
-            minesLeft += if (field[x - 1][y - 1] == Cell.MINE) 1 else 0
-        } else if ((field[x - 1][y - 1] != Cell.MINE) && getNeighbourMinesCount(x - 1, y - 1) > 0) {
-            println("There is a number here!")
-
-            return false
-        } else {
-            marked[x - 1][y - 1] = true
-            minesLeft -= if (field[x - 1][y - 1] == Cell.MINE) 1 else 0
+    private fun openCell(x: Int, y: Int) {
+        if (field[x][y].isOpened) {
+            return
         }
 
-        var showMines = true
+        field[x][y].isOpened = true
+        field[x][y].isMarked = false
 
-        for (row in 0 until rows) {
-            for (column in 0 until columns) {
-                when (marked[row][column]) {
-                    true -> if (field[row][column] != Cell.MINE) showMines = false
-                    false -> if (field[row][column] == Cell.MINE) showMines = false
-                }
+        if (getNeighborMinesCount(x, y) == 0) {
+            for (neighbor in getNeighborCells(x, y)) {
+                openCell(neighbor.first, neighbor.second)
             }
         }
+    }
 
-        printField(showMines)
+    private fun markCell(x: Int, y: Int) {
+        field[x][y].apply { isMarked = isMarked.not()}
+    }
 
-        return showMines
+    fun triggerCell(y: Int, x: Int, query: String): GameState {
+        when (query) {
+            "free" -> {
+                if (fieldWasCreated.not()) {
+                    createField(x - 1, y - 1)
+                    fieldWasCreated = true
+                }
+
+                openCell(x - 1, y - 1)
+            }
+            "mine" -> markCell(x - 1, y - 1)
+        }
+
+        printField(getGameState() == GameState.LOOSE)
+
+        return getGameState()
+    }
+
+    fun getGameState(): GameState {
+        if (fieldWasCreated.not()) {
+            return GameState.UNCLEAR
+        }
+
+        var allMinesAreMarked = true
+        var allMinesAreUnmarked = true
+
+        field.forEach{ it.forEach {
+            if (it.isOpened && it.isMine) {
+                return GameState.LOOSE
+            }
+
+            if (it.isMarked != it.isMine) {
+                allMinesAreMarked = false
+            }
+
+            if (it.isMine.not() && (it.isMarked || it.isOpened.not())) {
+                allMinesAreUnmarked = false
+            }
+        } }
+
+        return if (allMinesAreMarked || allMinesAreUnmarked) GameState.WIN else GameState.UNCLEAR
     }
 }

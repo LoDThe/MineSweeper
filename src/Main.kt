@@ -6,11 +6,15 @@ fun main() {
     val scanner = Scanner(System.`in`)
     print("How many mines do you want on the field? ")
     val sweeper = MineSweeper(scanner.nextInt())
-    sweeper.printField()
+    sweeper.printField(false)
 
     do {
-        print("Set/delete mines marks (x and y coordinates): ")
-    } while (!sweeper.markCell(scanner.nextInt(), scanner.nextInt()))
+        print("Set/unset mines marks or claim a cell as free: ")
+    } while (sweeper.triggerCell(scanner.nextInt(), scanner.nextInt(), scanner.next()) == GameState.UNCLEAR)
 
-    println("Congratulations! You founded all mines!")
+    if (sweeper.getGameState() == GameState.WIN) {
+        println("Congratulations! You founded all mines!")
+    } else {
+        println("You stepped on a mine and failed!")
+    }
 }
