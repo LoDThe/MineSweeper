@@ -5,15 +5,7 @@ import java.util.Scanner
 
 enum class GameState { WIN, LOOSE, UNCLEAR }
 
-class Cell(var isMine: Boolean, var isMarked: Boolean = false, var isOpened: Boolean = false) {
-    override fun toString(): String = when {
-        isMarked -> "*"
-        isOpened -> "/"
-        else -> {
-            "("
-        }
-    }
-}
+class Cell(var isMine: Boolean, var isMarked: Boolean = false, var isOpened: Boolean = false) {}
 
 class MineSweeper(var minesLeft: Int, val rows: Int = 9, val columns: Int = 9) {
     var field: Array<Array<Cell>>
